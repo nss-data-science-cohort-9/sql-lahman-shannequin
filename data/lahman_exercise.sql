@@ -5,7 +5,7 @@
 */
 
 -- 1. Find all players in the database who played at Vanderbilt University. 
-WITH V AS (SELECT DISTINCT ON (P.PLAYERID)
+WITH VANDY_PLAYERS AS (SELECT DISTINCT ON (P.PLAYERID)
 		P.PLAYERID,
 		P.NAMEFIRST,
 		P.NAMELAST
@@ -17,16 +17,52 @@ WITH V AS (SELECT DISTINCT ON (P.PLAYERID)
 SELECT V.NAMEFIRST,
 	V.NAMELAST,
 	SUM(L.SALARY) AS TOTAL_SALARY
-FROM V
+FROM VANDY_PLAYERS V
 	LEFT JOIN SALARIES L USING (PLAYERID)
 GROUP BY V.PLAYERID, V.NAMEFIRST, V.NAMELAST
 -- Sort this list in descending order by the total salary earned. Which Vanderbilt player earned the most money in the majors?
 ORDER BY TOTAL_SALARY DESC NULLS LAST;
 
+-- ANSWER: DAVID PRICE ($81,851,296)
 
--- 2. Using the fielding table, group players into three groups based on their position: label players with position OF as "Outfield", those with position "SS", "1B", "2B", and "3B" as "Infield", and those with position "P" or "C" as "Battery". Determine the number of putouts made by each of these three groups in 2016.
 
--- 3. Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. Do you see any trends? (Hint: For this question, you might find it helpful to look at the **generate_series** function (https://www.postgresql.org/docs/9.1/functions-srf.html). If you want to see an example of this in action, check out this DataCamp video: https://campus.datacamp.com/courses/exploratory-data-analysis-in-sql/summarizing-and-aggregating-numeric-data?ex=6)
+-- 2. Using the fielding table, group players into three groups based on their position: 
+-- label players with position OF as "Outfield", 
+-- those with position "SS", "1B", "2B", and "3B" as "Infield", 
+-- and those with position "P" or "C" as "Battery". 
+-- Determine the number of putouts made by each of these three groups in 2016.
+SELECT
+	CASE
+		WHEN POS = 'OF' THEN 'Outfield'
+		WHEN POS IN ('SS', '1B', '2B', '3B') THEN 'Infield'
+		WHEN POS IN ('P', 'C') THEN 'Battery'
+		ELSE NULL
+	END AS POSITION,
+	SUM(PO) AS TOTAL_PUTOUTS
+FROM FIELDING 
+WHERE YEARID = 2016
+GROUP BY POSITION
+ORDER BY TOTAL_PUTOUTS DESC;
+
+-- ANSWER: 
+-- Infield (58,934)
+-- Battery (41,424)
+-- Outfield (29,560)
+
+
+-- 3. Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. 
+-- Do you see any trends? (Hint: For this question, you might find it helpful to look at the **generate_series** function 
+-- (https://www.postgresql.org/docs/9.1/functions-srf.html). 
+-- If you want to see an example of this in action, check out this DataCamp video: 
+-- https://campus.datacamp.com/courses/exploratory-data-analysis-in-sql/summarizing-and-aggregating-numeric-data?ex=6)
+SELECT DECADE
+FROM GENERATE_SERIES(1920, 2026, 10) AS DECADE;
+
+SELECT *
+FROM TEAMS
+WHERE YEARID BETWEEN 1920 AND 1929;
+
+
 
 -- 4. Find the player who had the most success stealing bases in 2016, where __success__ is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted _at least_ 20 stolen bases. Report the players' names, number of stolen bases, number of attempts, and stolen base percentage.
 
