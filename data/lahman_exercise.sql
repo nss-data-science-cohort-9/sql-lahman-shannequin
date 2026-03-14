@@ -61,7 +61,7 @@ WITH BINS AS (
 	SELECT GENERATE_SERIES(1920, 2026, 10) AS LOWER,
 		GENERATE_SERIES(1929, 2026, 10) AS UPPER
 ),
-STRIKEOUTS_GAMES_YEAR AS (
+SO_GAMES_YEAR AS (
 	SELECT YEARID,
 		SUM(SO) AS SUM_SO,
 		SUM(G) AS SUM_G
@@ -74,7 +74,7 @@ TOTAL_SO_G_YEAR AS (
 		SUM(S.SUM_SO) AS TOTAL_SO,
 		SUM(S.SUM_G) / 2 AS TOTAL_G
 	FROM BINS B
-		LEFT JOIN STRIKEOUTS_GAMES_YEAR S ON B.LOWER <= S.YEARID
+		LEFT JOIN SO_GAMES_YEAR S ON B.LOWER <= S.YEARID
 			AND B.UPPER >= S.YEARID
 	GROUP BY B.LOWER, B.UPPER
 	ORDER BY B.LOWER, B.UPPER
@@ -96,6 +96,48 @@ FROM TOTAL_SO_G_YEAR;
 -- "2010 - 2019"	15.04
 -- "2020 - "	
 
+WITH BINS AS (
+	SELECT GENERATE_SERIES(1920, 2026, 10) AS LOWER,
+		GENERATE_SERIES(1929, 2026, 10) AS UPPER
+),
+HR_GAMES_YEAR AS (
+	SELECT YEARID,
+		SUM(HR) AS SUM_HR,
+		SUM(G) AS SUM_G
+	FROM TEAMS
+	GROUP BY YEARID
+),
+TOTAL_HR_G_YEAR AS (
+	SELECT B.LOWER,
+		B.UPPER,
+		SUM(S.SUM_HR) AS TOTAL_HR,
+		SUM(S.SUM_G) / 2 AS TOTAL_G
+	FROM BINS B
+		LEFT JOIN HR_GAMES_YEAR S ON B.LOWER <= S.YEARID
+			AND B.UPPER >= S.YEARID
+	GROUP BY B.LOWER, B.UPPER
+	ORDER BY B.LOWER, B.UPPER
+)
+SELECT CONCAT(LOWER, ' - ', UPPER) AS DECADE,
+	ROUND(TOTAL_HR / TOTAL_G, 2) AS AVG_HR
+FROM TOTAL_HR_G_YEAR;
+
+-- ANSWER:
+-- "1920 - 1929"	0.80
+-- "1930 - 1939"	1.09
+-- "1940 - 1949"	1.05
+-- "1950 - 1959"	1.69
+-- "1960 - 1969"	1.64
+-- "1970 - 1979"	1.49
+-- "1980 - 1989"	1.62
+-- "1990 - 1999"	1.91
+-- "2000 - 2009"	2.15
+-- "2010 - 2019"	1.97
+-- "2020 - "	
+
+-- THERE IS A POSITIVE CORRELATION BETWEEN THE DECADE, SO, AND HR.
+
+
 -- 4. Find the player who had the most success stealing bases in 2016, 
 -- where __success__ is measured as the percentage of stolen base attempts which are successful. 
 -- (A stolen base attempt results either in a stolen base or being caught stealing.) 
@@ -115,7 +157,26 @@ ORDER BY STEALING_SUCCESS DESC;
 
 -- ANSWER: Chris Owings (0.913)
 
--- 5. From 1970 to 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion; determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 to 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
+-- 5. From 1970 to 2016, what is the largest number of wins for a team that did not win the world series? 
+SELECT TEAMID,
+	SUM(W) AS WINS
+FROM TEAMS
+WHERE TEAMID NOT IN (
+	SELECT DISTINCT TEAMID
+	FROM TEAMS
+	WHERE WSWIN = 'Y'
+		AND YEARID BETWEEN 1970 AND 2016
+)
+GROUP BY TEAMID
+ORDER BY WINS DESC;
+
+-- ANSWER: CLE (9,191)
+
+
+-- What is the smallest number of wins for a team that did win the world series? 
+-- Doing this will probably result in an unusually small number of wins for a world series champion; determine why this is the case. 
+-- Then redo your query, excluding the problem year. 
+-- How often from 1970 to 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
 
 -- 6. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
 
