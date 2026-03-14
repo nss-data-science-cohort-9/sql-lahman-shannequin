@@ -50,21 +50,70 @@ ORDER BY TOTAL_PUTOUTS DESC;
 -- Outfield (29,560)
 
 
--- 3. Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. 
+-- 3. Find the average number of strikeouts per game by decade since 1920. 
+-- Round the numbers you report to 2 decimal places. 
+-- Do the same for home runs per game. 
 -- Do you see any trends? (Hint: For this question, you might find it helpful to look at the **generate_series** function 
 -- (https://www.postgresql.org/docs/9.1/functions-srf.html). 
 -- If you want to see an example of this in action, check out this DataCamp video: 
 -- https://campus.datacamp.com/courses/exploratory-data-analysis-in-sql/summarizing-and-aggregating-numeric-data?ex=6)
-SELECT DECADE
-FROM GENERATE_SERIES(1920, 2026, 10) AS DECADE;
+WITH BINS AS (
+	SELECT GENERATE_SERIES(1920, 2026, 10) AS LOWER,
+		GENERATE_SERIES(1929, 2026, 10) AS UPPER
+),
+STRIKEOUTS_GAMES_YEAR AS (
+	SELECT YEARID,
+		SUM(SO) AS SUM_SO,
+		SUM(G) AS SUM_G
+	FROM TEAMS
+	GROUP BY YEARID
+),
+TOTAL_SO_G_YEAR AS (
+	SELECT B.LOWER,
+		B.UPPER,
+		SUM(S.SUM_SO) AS TOTAL_SO,
+		SUM(S.SUM_G) / 2 AS TOTAL_G
+	FROM BINS B
+		LEFT JOIN STRIKEOUTS_GAMES_YEAR S ON B.LOWER <= S.YEARID
+			AND B.UPPER >= S.YEARID
+	GROUP BY B.LOWER, B.UPPER
+	ORDER BY B.LOWER, B.UPPER
+)
+SELECT CONCAT(LOWER, ' - ', UPPER) AS DECADE,
+	ROUND(TOTAL_SO / TOTAL_G, 2) AS AVG_SO
+FROM TOTAL_SO_G_YEAR;
 
-SELECT *
-FROM TEAMS
-WHERE YEARID BETWEEN 1920 AND 1929;
+-- ANSWER:
+-- "1920 - 1929"	5.63
+-- "1930 - 1939"	6.63
+-- "1940 - 1949"	7.10
+-- "1950 - 1959"	8.80
+-- "1960 - 1969"	11.43
+-- "1970 - 1979"	10.29
+-- "1980 - 1989"	10.73
+-- "1990 - 1999"	12.30
+-- "2000 - 2009"	13.12
+-- "2010 - 2019"	15.04
+-- "2020 - "	
 
+-- 4. Find the player who had the most success stealing bases in 2016, 
+-- where __success__ is measured as the percentage of stolen base attempts which are successful. 
+-- (A stolen base attempt results either in a stolen base or being caught stealing.) 
+-- Consider only players who attempted _at least_ 20 stolen bases. Report the players' names, number of stolen bases, 
+-- number of attempts, and stolen base percentage.
+SELECT P.NAMEFIRST,
+	P.NAMELAST,
+	B.SB,
+	B.CS,
+	B.SB + B.CS AS STEALING_ATTEMPTS,
+	ROUND(B.SB::DECIMAL / (B.SB + B.CS), 3) AS STEALING_SUCCESS
+FROM BATTING B
+	INNER JOIN PEOPLE P USING (PLAYERID)
+WHERE B.YEARID = 2016
+	AND (B.SB + B.CS) >= 20
+ORDER BY STEALING_SUCCESS DESC;
 
-
--- 4. Find the player who had the most success stealing bases in 2016, where __success__ is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted _at least_ 20 stolen bases. Report the players' names, number of stolen bases, number of attempts, and stolen base percentage.
+-- ANSWER: Chris Owings (0.913)
 
 -- 5. From 1970 to 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion; determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 to 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
 
