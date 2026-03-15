@@ -5,23 +5,41 @@
 */
 
 -- 1. Find all players in the database who played at Vanderbilt University. 
-WITH VANDY_PLAYERS AS (SELECT DISTINCT ON (P.PLAYERID)
+-- Create a list showing each player's first and last names as well as the total salary they earned in the major leagues. 
+-- Sort this list in descending order by the total salary earned. Which Vanderbilt player earned the most money in the majors?
+
+WITH VANDY_PLAYERS AS (
+	SELECT DISTINCT ON (P.PLAYERID)
 		P.PLAYERID,
 		P.NAMEFIRST,
 		P.NAMELAST
 	FROM PEOPLE P
-		LEFT JOIN COLLEGEPLAYING C USING (PLAYERID)
-		LEFT JOIN SCHOOLS S ON C.SCHOOLID = S.SCHOOLID
-	WHERE S.SCHOOLNAME = 'Vanderbilt University')
--- Create a list showing each player's first and last names as well as the total salary they earned in the major leagues. 
-SELECT V.NAMEFIRST,
-	V.NAMELAST,
-	SUM(L.SALARY) AS TOTAL_SALARY
+		INNER JOIN COLLEGEPLAYING C USING (PLAYERID)
+		INNER JOIN SCHOOLS S ON C.SCHOOLID = S.SCHOOLID
+	WHERE S.SCHOOLNAME = 'Vanderbilt University'
+)
+SELECT 
+	CONCAT(V.NAMEFIRST, ' ', V.NAMELAST) AS NAME,
+	SUM(L.SALARY)::NUMERIC::MONEY AS TOTAL_EARNINGS
 FROM VANDY_PLAYERS V
-	LEFT JOIN SALARIES L USING (PLAYERID)
+	INNER JOIN SALARIES L USING (PLAYERID)
 GROUP BY V.PLAYERID, V.NAMEFIRST, V.NAMELAST
--- Sort this list in descending order by the total salary earned. Which Vanderbilt player earned the most money in the majors?
-ORDER BY TOTAL_SALARY DESC NULLS LAST;
+ORDER BY TOTAL_EARNINGS DESC NULLS LAST;
+
+-- ALTERNATE SOLUTION
+
+SELECT 
+	P.NAMEFIRST || ' ' || P.NAMELAST AS NAME,
+	SUM(S.SALARY)::NUMERIC::MONEY AS TOTAL_EARNINGS
+FROM PEOPLE P
+	INNER JOIN SALARIES S USING (PLAYERID)
+WHERE P.PLAYERID IN (
+	SELECT PLAYERID
+	FROM COLLEGEPLAYING
+	WHERE SCHOOLID = 'vandy'
+)
+GROUP BY P.NAMEFIRST, P.NAMELAST
+ORDER BY TOTAL_EARNINGS DESC NULLS LAST;
 
 -- ANSWER: DAVID PRICE ($81,851,296)
 
@@ -53,10 +71,9 @@ ORDER BY TOTAL_PUTOUTS DESC;
 -- 3. Find the average number of strikeouts per game by decade since 1920. 
 -- Round the numbers you report to 2 decimal places. 
 -- Do the same for home runs per game. 
--- Do you see any trends? (Hint: For this question, you might find it helpful to look at the **generate_series** function 
--- (https://www.postgresql.org/docs/9.1/functions-srf.html). 
--- If you want to see an example of this in action, check out this DataCamp video: 
--- https://campus.datacamp.com/courses/exploratory-data-analysis-in-sql/summarizing-and-aggregating-numeric-data?ex=6)
+-- Do you see any trends?
+-- (Hint: For this question, you might find it helpful to look at the **generate_series** function (https://www.postgresql.org/docs/9.1/functions-srf.html). 
+-- If you want to see an example of this in action, check out this DataCamp video: https://campus.datacamp.com/courses/exploratory-data-analysis-in-sql/summarizing-and-aggregating-numeric-data?ex=6)
 WITH BINS AS (
 	SELECT GENERATE_SERIES(1920, 2026, 10) AS LOWER,
 		GENERATE_SERIES(1929, 2026, 10) AS UPPER
@@ -82,6 +99,8 @@ TOTAL_SO_G_YEAR AS (
 SELECT CONCAT(LOWER, ' - ', UPPER) AS DECADE,
 	ROUND(TOTAL_SO / TOTAL_G, 2) AS AVG_SO
 FROM TOTAL_SO_G_YEAR;
+
+-- ALTERNATE TO GET DECADES: (YEAR / 10) * 10
 
 -- ANSWER:
 -- "1920 - 1929"	5.63
@@ -137,56 +156,361 @@ FROM TOTAL_HR_G_YEAR;
 
 -- THERE IS A POSITIVE CORRELATION BETWEEN THE DECADE, SO, AND HR.
 
+-- ALTERNATE SOLUTION
+
+WITH DECADES AS (
+	SELECT *
+	FROM GENERATE_SERIES(1920, 2016, 10) AS DECADE_START
+)
+SELECT
+	DECADE_START || 's' AS DECADE,
+	ROUND(SUM(SO) * 1.0 / (SUM(G) / 2.0), 2) AS SO_PER_GAME,
+	ROUND(SUM(HR) * 1.0 / (SUM(G) / 2.0), 2) AS HR_PER_GAME
+FROM TEAMS T
+	INNER JOIN DECADES D ON T.YEARID BETWEEN D.DECADE_START AND D.DECADE_START + 9
+WHERE YEARID >= 1920
+GROUP BY DECADE
+ORDER BY DECADE;
+
 
 -- 4. Find the player who had the most success stealing bases in 2016, 
 -- where __success__ is measured as the percentage of stolen base attempts which are successful. 
 -- (A stolen base attempt results either in a stolen base or being caught stealing.) 
--- Consider only players who attempted _at least_ 20 stolen bases. Report the players' names, number of stolen bases, 
--- number of attempts, and stolen base percentage.
-SELECT P.NAMEFIRST,
-	P.NAMELAST,
-	B.SB,
-	B.CS,
-	B.SB + B.CS AS STEALING_ATTEMPTS,
-	ROUND(B.SB::DECIMAL / (B.SB + B.CS), 3) AS STEALING_SUCCESS
+-- Consider only players who attempted _at least_ 20 stolen bases. 
+-- Report the players' names, number of stolen bases, number of attempts, and stolen base percentage.
+
+WITH STEALING_TOTALS AS (
+	SELECT
+		PLAYERID,
+		SUM(SB) AS TOTAL_SB,
+		SUM(CS) AS TOTAL_CS,
+		SUM(SB) + SUM(CS) AS TOTAL_ATTEMPTS
+	FROM BATTING
+	WHERE YEARID = 2016
+	GROUP BY PLAYERID
+	-- ALTERNATE INSTEAD OF MAIN QUERY WHERE STATEMENT: HAVING SUM(SB) + SUM(CS) >= 20
+)
+SELECT CONCAT(P.NAMEFIRST, ' ', P.NAMELAST) AS NAME,
+	B.TOTAL_SB,
+	B.TOTAL_ATTEMPTS,
+	ROUND(B.TOTAL_SB::DECIMAL / B.TOTAL_ATTEMPTS, 3) AS PERCENT_STOLEN
+FROM STEALING_TOTALS B
+	INNER JOIN PEOPLE P USING (PLAYERID)
+WHERE B.TOTAL_ATTEMPTS >= 20
+ORDER BY PERCENT_STOLEN DESC
+LIMIT 1;
+
+-- ANSWER: Chris Owings	(21	23	0.913)
+
+-- ALTERNATE SOLUTION
+
+SELECT
+	P.NAMEFIRST || ' ' || P.NAMELAST AS NAME,
+	SUM(SB) AS TOTAL_SB,
+	SUM(SB) + SUM(CS) AS TOTAL_ATTEMPTS,
+	ROUND(SUM(SB)::DECIMAL / (SUM(SB) + SUM(CS)), 3) AS PERCENT_STOLEN
 FROM BATTING B
 	INNER JOIN PEOPLE P USING (PLAYERID)
-WHERE B.YEARID = 2016
-	AND (B.SB + B.CS) >= 20
-ORDER BY STEALING_SUCCESS DESC;
+WHERE YEARID = 2016
+GROUP BY NAME
+HAVING SUM(SB) + SUM(CS) >= 20
+ORDER BY PERCENT_STOLEN DESC
+LIMIT 1;
 
--- ANSWER: Chris Owings (0.913)
 
 -- 5. From 1970 to 2016, what is the largest number of wins for a team that did not win the world series? 
-SELECT TEAMID,
-	SUM(W) AS WINS
+SELECT
+	YEARID,
+	TEAMID,
+	W
 FROM TEAMS
-WHERE TEAMID NOT IN (
-	SELECT DISTINCT TEAMID
-	FROM TEAMS
-	WHERE WSWIN = 'Y'
-		AND YEARID BETWEEN 1970 AND 2016
-)
-GROUP BY TEAMID
-ORDER BY WINS DESC;
+WHERE WSWIN = 'N'
+	AND YEARID BETWEEN 1970 AND 2016
+ORDER BY W DESC
+LIMIT 1;
 
--- ANSWER: CLE (9,191)
+-- ANSWER: SEA (116)
 
 
 -- What is the smallest number of wins for a team that did win the world series? 
+SELECT
+	YEARID,
+	TEAMID,
+	W
+FROM TEAMS
+WHERE WSWIN = 'Y'
+	AND YEARID BETWEEN 1970 AND 2016
+ORDER BY W
+LIMIT 1;
+
+-- ANSWER: LAN (63)
+
 -- Doing this will probably result in an unusually small number of wins for a world series champion; determine why this is the case. 
+SELECT DISTINCT YEARID, SUM(G) / 2 AS SUM_G
+FROM TEAMS
+WHERE YEARID >= 1970
+GROUP BY YEARID
+ORDER BY SUM_G;
+
+-- ANSWER: THERE WAS A PLAYER STRIKE IN 1981 AND 1994
+
 -- Then redo your query, excluding the problem year. 
+SELECT
+	YEARID,
+	TEAMID,
+	W
+FROM TEAMS
+WHERE YEARID BETWEEN 1970 AND 2016
+	AND YEARID <> 1981
+	AND WSWIN = 'Y'
+ORDER BY W
+LIMIT 1;
+
+-- ANSWER: SLN (83)
+
 -- How often from 1970 to 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
+-- (TEAMS COULD BE TIED FOR MOST WINS)
+WITH MOST_GAMES_WON AS (
+	SELECT DISTINCT ON (YEARID)
+		YEARID,
+		TEAMID,
+		W,
+		WSWIN
+	FROM TEAMS
+	WHERE YEARID BETWEEN 1970 AND 2016
+	ORDER BY YEARID, W DESC, WSWIN DESC
+),
+WS_WINNERS AS (
+	SELECT TEAMID
+	FROM MOST_GAMES_WON
+	WHERE WSWIN = 'Y'
+)
+SELECT ROUND(
+	(
+		SELECT COUNT(*)
+		FROM WS_WINNERS
+	) / COUNT(*)::DECIMAL,
+	3
+) AS PERCENT_WS_MOST_WINS
+FROM MOST_GAMES_WON;
 
--- 6. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
+-- ALTERNATE SOLUTION
 
--- 7. Which pitcher was the least efficient in 2016 in terms of salary / strikeouts? Only consider pitchers who started at least 10 games (across all teams). Note that pitchers often play for more than one team in a season, so be sure that you are counting all stats for each player.
+WITH WS_WINNERS AS (
+	SELECT
+		TEAMID,
+		YEARID,
+		W,
+		WSWIN
+	FROM TEAMS
+	WHERE YEARID BETWEEN 1970 AND 2016
+		AND WSWIN = 'Y'
+),
+MOST_WINS AS (
+	SELECT
+		YEARID,
+		MAX(W) AS MAX_WINS
+	FROM TEAMS
+	WHERE YEARID BETWEEN 1970 AND 2016
+	GROUP BY YEARID
+),
+WINNERS_WITH_MOST_WINS AS (
+	SELECT
+		W.YEARID,
+		TEAMID,
+		W
+	FROM WS_WINNERS W
+		INNER JOIN MOST_WINS M ON W.YEARID = M.YEARID
+		AND W = MAX_WINS
+)
+SELECT ROUND(
+	100.0 * (
+		SELECT COUNT(*)
+		FROM WINNERS_WITH_MOST_WINS
+	) / (
+		SELECT COUNT(*)
+		FROM WS_WINNERS
+	),
+	1
+);
 
--- 8. Find all players who have had at least 3000 career hits. Report those players' names, total number of hits, and the year they were inducted into the hall of fame (If they were not inducted into the hall of fame, put a null in that column.) Note that a player being inducted into the hall of fame is indicated by a 'Y' in the **inducted** column of the halloffame table.
+
+-- 6. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? 
+-- Give their full name and the teams that they were managing when they won the award.
+
+SELECT
+	NAMEFIRST || ' ' || NAMELAST AS FULL_NAME,
+	A.YEARID AS YEAR,
+	A.LGID AS LEAGUE,
+	NAME AS TEAM_NAME
+FROM AWARDSMANAGERS A
+	INNER JOIN PEOPLE P ON A.PLAYERID = P.PLAYERID
+	INNER JOIN MANAGERS M ON A.PLAYERID = M.PLAYERID
+		AND A.YEARID = M.YEARID
+	INNER JOIN TEAMS T ON M.TEAMID = T.TEAMID
+		AND M.YEARID = T.YEARID
+WHERE
+	A.PLAYERID IN (
+		SELECT *
+		FROM (
+			(
+				SELECT PLAYERID
+				FROM AWARDSMANAGERS
+				WHERE AWARDID = 'TSN Manager of the Year'
+					AND LGID = 'AL'
+			)
+			INTERSECT
+			(
+				SELECT PLAYERID
+				FROM AWARDSMANAGERS
+				WHERE
+					AWARDID = 'TSN Manager of the Year'
+					AND LGID = 'NL'
+			)
+		)
+	)
+	AND AWARDID = 'TSN Manager of the Year'
+ORDER BY FULL_NAME,	A.YEARID;
+
+-- ALTERNATE SOLUTION
+
+WITH BOTH_LEAGUE_WINNERS AS (
+	(
+		SELECT PLAYERID
+		FROM AWARDSMANAGERS
+		WHERE
+			AWARDID = 'TSN Manager of the Year'
+			AND LGID = 'AL'
+	)
+	INTERSECT
+	(
+		SELECT PLAYERID
+		FROM AWARDSMANAGERS
+		WHERE
+			AWARDID = 'TSN Manager of the Year'
+			AND LGID = 'NL'
+	)
+)
+SELECT
+	NAMEFIRST || ' ' || NAMELAST AS FULL_NAME,
+	A.YEARID,
+	A.LGID,
+	NAME
+FROM
+	AWARDSMANAGERS A
+	INNER JOIN PEOPLE P ON A.PLAYERID = P.PLAYERID
+	INNER JOIN MANAGERS M ON A.PLAYERID = M.PLAYERID
+	AND A.YEARID = M.YEARID
+	INNER JOIN TEAMS T ON M.TEAMID = T.TEAMID
+	AND M.YEARID = T.YEARID
+WHERE
+	A.PLAYERID IN (
+		SELECT *
+		FROM BOTH_LEAGUE_WINNERS
+	)
+	AND AWARDID = 'TSN Manager of the Year'
+ORDER BY
+	FULL_NAME,
+	YEARID;
+
+-- ANSWER:
+-- "Davey Johnson"	1997	"AL"	"Baltimore Orioles"
+-- "Davey Johnson"	2012	"NL"	"Washington Nationals"
+-- "Jim Leyland"	1988	"NL"	"Pittsburgh Pirates"
+-- "Jim Leyland"	1990	"NL"	"Pittsburgh Pirates"
+-- "Jim Leyland"	1992	"NL"	"Pittsburgh Pirates"
+-- "Jim Leyland"	2006	"AL"	"Detroit Tigers"
+
+
+-- 7. Which pitcher was the least efficient in 2016 in terms of salary / strikeouts?
+-- Only consider pitchers who started at least 10 games (across all teams). 
+-- Note that pitchers often play for more than one team in a season, so be sure that you are counting all stats for each player.
+
+SELECT
+	NAMEFIRST || ' ' || NAMELAST AS FULL_NAME,
+	ROUND(SALARY::NUMERIC / SO, 2)::MONEY AS SALARY_PER_STRIKEOUT,
+	SALARY::NUMERIC::MONEY,
+	SO
+FROM (
+	SELECT
+		PLAYERID,
+		SUM(SO) AS SO,
+		SUM(GS) AS GS
+	FROM PITCHING
+	WHERE YEARID = 2016
+	GROUP BY PLAYERID
+	HAVING SUM(GS) >= 10
+) P
+	INNER JOIN (
+		SELECT
+			PLAYERID,
+			SUM(SALARY) AS SALARY
+		FROM SALARIES
+		WHERE YEARID = 2016
+		GROUP BY PLAYERID
+	) S ON P.PLAYERID = S.PLAYERID
+	INNER JOIN PEOPLE PE ON P.PLAYERID = PE.PLAYERID
+ORDER BY SALARY_PER_STRIKEOUT DESC;
+
+-- ALTERNATE SOLUTION
+
+WITH
+	FULL_PITCHING AS (
+		SELECT
+			PLAYERID,
+			SUM(SO) AS SO,
+			SUM(GS) AS GS
+		FROM PITCHING
+		WHERE YEARID = 2016
+		GROUP BY PLAYERID
+		HAVING SUM(GS) >= 10
+	),
+	FULL_SALARIES AS (
+		SELECT
+			PLAYERID,
+			SUM(SALARY) AS SALARY
+		FROM SALARIES
+		WHERE YEARID = 2016
+		GROUP BY PLAYERID
+	)
+SELECT
+	NAMEFIRST || ' ' || NAMELAST AS FULL_NAME,
+	ROUND(SALARY::NUMERIC / SO, 2)::MONEY AS SALARY_PER_STRIKEOUT,
+	SALARY::NUMERIC::MONEY,
+	SO
+FROM FULL_PITCHING P
+	INNER JOIN FULL_SALARIES S ON P.PLAYERID = S.PLAYERID
+	INNER JOIN PEOPLE PE ON P.PLAYERID = PE.PLAYERID
+ORDER BY SALARY_PER_STRIKEOUT DESC;
+
+-- ANSWER: Matt Cain ($20,833,333.00 / 72 = $289,351.85)
+
+
+-- 8. Find all players who have had at least 3000 career hits. 
+-- Report those players' names, total number of hits, and the year they were inducted into the hall of fame 
+-- (If they were not inducted into the hall of fame, put a null in that column.) 
+-- Note that a player being inducted into the hall of fame is indicated by a 'Y' in the **inducted** column of the halloffame table.
+SELECT *
+FROM BATTING B
+	INNER JOIN PEOPLE P USING (PLAYERID)
+	INNER JOIN HALLOFFAME H USING (PLAYERID)
+LIMIT 5;
+	
 
 -- 9. Find all players who had at least 1,000 hits for two different teams. Report those players' full names.
+SELECT *
+FROM BATTING B
+	INNER JOIN PEOPLE P USING (PLAYERID)
+LIMIT 5;
 
--- 10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
+
+-- 10. Find all players who hit their career highest number of home runs in 2016. 
+-- Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. 
+-- Report the players' first and last names and the number of home runs they hit in 2016.
+SELECT *
+FROM BATTING B
+	INNER JOIN PEOPLE P USING (PLAYERID)
+LIMIT 5;
 
 -- After finishing the above questions, here are some open-ended questions to consider.
 
