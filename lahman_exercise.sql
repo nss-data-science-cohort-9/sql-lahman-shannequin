@@ -245,6 +245,7 @@ LIMIT 1;
 
 -- ANSWER: LAN (63)
 
+
 -- Doing this will probably result in an unusually small number of wins for a world series champion; determine why this is the case. 
 SELECT DISTINCT YEARID, SUM(G) / 2 AS SUM_G
 FROM TEAMS
@@ -253,6 +254,7 @@ GROUP BY YEARID
 ORDER BY SUM_G;
 
 -- ANSWER: THERE WAS A PLAYER STRIKE IN 1981 AND 1994
+
 
 -- Then redo your query, excluding the problem year. 
 SELECT
@@ -267,6 +269,7 @@ ORDER BY W
 LIMIT 1;
 
 -- ANSWER: SLN (83)
+
 
 -- How often from 1970 to 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
 -- (TEAMS COULD BE TIED FOR MOST WINS)
@@ -490,12 +493,37 @@ ORDER BY SALARY_PER_STRIKEOUT DESC;
 -- Report those players' names, total number of hits, and the year they were inducted into the hall of fame 
 -- (If they were not inducted into the hall of fame, put a null in that column.) 
 -- Note that a player being inducted into the hall of fame is indicated by a 'Y' in the **inducted** column of the halloffame table.
-SELECT *
-FROM BATTING B
-	INNER JOIN PEOPLE P USING (PLAYERID)
-	INNER JOIN HALLOFFAME H USING (PLAYERID)
-LIMIT 5;
-	
+
+WITH
+	HITS AS (
+		SELECT PLAYERID,
+			SUM(H) AS CAREER_HITS
+		FROM BATTING
+		GROUP BY PLAYERID
+		HAVING SUM(H) >= 3000
+	),
+	HALL_OF_FAME AS (
+		SELECT DISTINCT ON (H.PLAYERID)
+			H.PLAYERID,
+			CASE
+				WHEN F.INDUCTED = 'Y' THEN F.YEARID
+				ELSE NULL
+			END AS HALL_OF_FAME_YEAR,
+			H.CAREER_HITS
+		FROM HALLOFFAME F
+			RIGHT JOIN HITS H USING (PLAYERID)
+		ORDER BY PLAYERID, HALL_OF_FAME_YEAR
+	)
+SELECT
+	P.NAMEFIRST || ' ' || NAMELAST AS PLAYER_NAME,
+	F.CAREER_HITS,
+	F.HALL_OF_FAME_YEAR
+FROM PEOPLE P
+	RIGHT JOIN HALL_OF_FAME F ON P.PLAYERID = F.PLAYERID
+ORDER BY HALL_OF_FAME_YEAR, CAREER_HITS DESC;
+
+-- ANSWER: (30 ROWS)
+
 
 -- 9. Find all players who had at least 1,000 hits for two different teams. Report those players' full names.
 SELECT *
