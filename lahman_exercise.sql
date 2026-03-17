@@ -589,7 +589,27 @@ ORDER BY MAX_HR DESC;
 
 -- **Open-ended questions**
 
--- 11. Is there any correlation between number of wins and team salary? Use data from 2000 and later to answer this question. As you do this analysis, keep in mind that salaries across the whole league tend to increase together, so you may want to look on a year-by-year basis.
+-- 11. Is there any correlation between number of wins and team salary?
+-- Use data from 2000 and later to answer this question.
+-- As you do this analysis, keep in mind that salaries across the whole league tend to increase together, so you may want to look on a year-by-year basis.
+
+WITH WINS_SALARY AS (
+	SELECT
+		T.YEARID,
+		T.LGID,
+		T.NAME,
+		SUM(T.W) AS WINS,
+		SUM(S.SALARY)::NUMERIC::MONEY AS SALARY
+	FROM TEAMS T
+		INNER JOIN SALARIES S USING(YEARID, LGID, TEAMID)
+	WHERE T.YEARID >= 2000
+	GROUP BY T.YEARID, T.LGID, T.NAME
+	ORDER BY WINS DESC
+)
+SELECT *
+FROM WINS_SALARY
+ORDER BY YEARID DESC, WINS DESC;
+
 
 -- 12. In this question, you will explore the connection between number of wins and attendance.
 
